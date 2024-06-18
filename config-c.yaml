@@ -1,0 +1,23 @@
+log:
+  consoleLevel: debug
+  fileLevel: error
+  logFilePath: ""
+transfer:
+  maxBidiRemoteStreams: 100
+  maxIdleTimeout: -1
+  keepAlivePeriod: 30000000000
+role:
+  - client
+endpoint:
+  address: 127.0.0.1
+  port: 23456
+inbounds:
+  - address: 127.0.0.1
+    port: 10086
+    protocol: socks
+  - address: 127.0.0.1
+    port: 2809
+    protocol: http
+filter:
+  - CN
+  - PRIVATE

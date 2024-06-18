@@ -1,0 +1,14 @@
+log:
+  consoleLevel: debug
+  fileLevel: error
+  logFilePath: ""
+transfer:
+  maxBidiRemoteStreams: 100
+  maxIdleTimeout: -1
+  keepAlivePeriod: 30000000000
+role:
+  - server
+endpoint:
+  address: 127.0.0.1
+  port: 23456
+
