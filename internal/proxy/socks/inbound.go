@@ -13,6 +13,7 @@ import (
 	"io"
 	"log"
 	"myproxy/internal/mlog"
+	"myproxy/internal/router"
 	io2 "myproxy/pkg/io"
 	"myproxy/pkg/models"
 	"myproxy/pkg/shared"
@@ -246,6 +247,13 @@ func tcp(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *models
 			mlog.Error(err.Error())
 			return
 		}
+
+		r := router.Router{
+			InboundTag: inb.Tag,
+			DstAddr:    ip[0].String(),
+		}
+
+		r.Process()
 
 		if shared.IPDB != nil {
 			country, err := shared.IPDB.Country(ip[0])
