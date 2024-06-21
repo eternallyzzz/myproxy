@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"golang.org/x/net/quic"
 	"myproxy/internal/mlog"
-	http2 "myproxy/internal/proxy/http"
-	socks2 "myproxy/internal/proxy/socks"
+	"myproxy/internal/proxy/http"
+	"myproxy/internal/proxy/socks"
 	"myproxy/pkg/models"
 	"myproxy/pkg/shared"
 )
@@ -50,24 +50,22 @@ func handConn(ctx context.Context, conn *quic.Conn) {
 
 		switch i.Protocol {
 		case shared.HTTP:
-			go http2.Process(i.Content, stream)
+			go http.Process(i.Content, stream)
 			break
 		case shared.SOCKS:
-			go socks2.Process(i.Request, stream)
+			go socks.Process(i.Request, stream)
 			break
 		}
 	}
 }
 
-func Process(ctx context.Context, conn *quic.Conn, inbs []*models.Service) {
-	for _, inbound := range inbs {
-		switch inbound.Protocol {
-		case shared.SOCKS:
-			go socks2.Inbound(ctx, inbound, conn)
-			break
-		case shared.HTTP:
-			go http2.Inbound(ctx, inbound, conn)
-			break
-		}
+func Process(ctx context.Context, inb *models.Inbound) {
+	switch inb.Protocol {
+	case shared.SOCKS:
+		go socks.Inbound(ctx, inb)
+		break
+	case shared.HTTP:
+		go http.Inbound(ctx, inb)
+		break
 	}
 }

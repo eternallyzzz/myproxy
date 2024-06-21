@@ -118,11 +118,11 @@ func resolveConfig(cfg *models.Config) []any {
 		if cfg.Endpoint != nil {
 			cfgs = append(cfgs, cfg.Endpoint)
 		}
-		if cfg.Inbounds != nil {
-			cfgs = append(cfgs, cfg.Inbounds)
-		}
 		if cfg.Outbounds != nil {
 			cfgs = append(cfgs, cfg.Outbounds)
+		}
+		if cfg.Inbounds != nil {
+			cfgs = append(cfgs, cfg.Inbounds)
 		}
 		if cfg.Routing != nil {
 			cfgs = append(cfgs, cfg.Routing)

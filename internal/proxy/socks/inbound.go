@@ -23,8 +23,8 @@ import (
 	"sync"
 )
 
-func Inbound(ctx context.Context, s *models.Service, conn *quic.Conn) {
-	udpAddr, err := net.ResolveUDPAddr("udp", s.String())
+func Inbound(ctx context.Context, inb *models.Inbound) {
+	udpAddr, err := net.ResolveUDPAddr("udp", inb.AddrPort())
 
 	l, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
@@ -35,9 +35,9 @@ func Inbound(ctx context.Context, s *models.Service, conn *quic.Conn) {
 
 	mlog.Info("listening UDP on " + udpAddr.String())
 
-	go listenUDP(ctx, l, conn)
+	go listenUDP(ctx, l, inb)
 
-	tl, err := net.Listen("tcp", s.String())
+	tl, err := net.Listen("tcp", inb.AddrPort())
 	if err != nil {
 		log.Fatal("Failed to start listener:", err)
 	}
@@ -50,11 +50,11 @@ func Inbound(ctx context.Context, s *models.Service, conn *quic.Conn) {
 			return
 		}
 
-		go tcp(ctx, client, udpAddr, conn)
+		go tcp(ctx, client, udpAddr, inb)
 	}
 }
 
-func listenUDP(ctx context.Context, l *net.UDPConn, quicConn *quic.Conn) {
+func listenUDP(ctx context.Context, l *net.UDPConn) {
 	defer l.Close()
 
 	buff := make([]byte, 1500)
@@ -90,6 +90,7 @@ func listenUDP(ctx context.Context, l *net.UDPConn, quicConn *quic.Conn) {
 			work := &Work{
 				ID:      id.GetSnowflakeID().String(),
 				SrcAddr: addr,
+				DstAddr: dstAddr,
 				Input:   make(chan []byte, 1024),
 				Output:  make(chan []byte, 1024),
 				SrcConn: l,
@@ -169,18 +170,19 @@ func listenUDP(ctx context.Context, l *net.UDPConn, quicConn *quic.Conn) {
 
 			hm.Store(addr.Network()+addr.String(), work)
 
-			go work.write()
-			go work.read()
+			go work.Write()
+			go work.Read()
 			work.Input <- data
 		}
 	}
 }
 
-func tcp(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, quicConn *quic.Conn) {
+func tcp(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *models.Inbound) {
 	authRequest, err := socks5.ReadAuthRequest(conn)
 	if err != nil {
 		return
 	}
+
 	// 检查是否支持用户名密码认证
 	var supportAuth bool
 	for _, m := range authRequest.Methods {
@@ -199,13 +201,33 @@ func tcp(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, quicConn *q
 		if err != nil {
 			return
 		}
-		mlog.Debug(request.Username + " " + request.Password)
-		// 回复验证通过
-		err = socks5.WriteUsernamePasswordAuthResponse(conn, socks5.UsernamePasswordAuthResponse{Status: socks5.ReplyCodeSuccess})
+
+		if inb.Setting != nil && inb.Setting.User != "" && inb.Setting.Pass != "" {
+			if request.Username != inb.Setting.User || request.Password != inb.Setting.Pass {
+				err := socks5.WriteUsernamePasswordAuthResponse(conn, socks5.UsernamePasswordAuthResponse{
+					Status: socks5.UsernamePasswordStatusFailure,
+				})
+				if err != nil {
+					return
+				}
+			}
+		}
+
+		err = socks5.WriteUsernamePasswordAuthResponse(conn, socks5.UsernamePasswordAuthResponse{
+			Status: socks5.UsernamePasswordStatusSuccess,
+		})
 		if err != nil {
 			return
 		}
 	} else {
+		if inb.Setting != nil && inb.Setting.User != "" && inb.Setting.Pass != "" {
+			err := socks5.WriteAuthResponse(conn, socks5.AuthResponse{
+				Method: socks5.AuthTypeUsernamePassword,
+			})
+			if err != nil {
+				return
+			}
+		}
 		err = socks5.WriteAuthResponse(conn, socks5.AuthResponse{Method: socks5.AuthTypeNotRequired})
 		if err != nil {
 			return
@@ -351,13 +373,14 @@ func directSocks(req socks5.Request, conn net.Conn) {
 type Work struct {
 	ID      string
 	SrcAddr *net.UDPAddr
+	DstAddr *net.UDPAddr
 	Input   chan []byte
 	Output  chan []byte
 	SrcConn *net.UDPConn
 	DstConn io.ReadWriteCloser
 }
 
-func (w *Work) write() {
+func (w *Work) Write() {
 	defer close(w.Output)
 	defer w.DstConn.Close()
 
@@ -377,7 +400,7 @@ func (w *Work) write() {
 	}
 }
 
-func (w *Work) read() {
+func (w *Work) Read() {
 	defer close(w.Input)
 
 	buff := make([]byte, 1500)

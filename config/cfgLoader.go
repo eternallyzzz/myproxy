@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"github.com/oschwald/geoip2-golang"
 	"github.com/spf13/viper"
 	"myproxy/internal/mlog"
 	"myproxy/pkg/models"
@@ -20,6 +21,18 @@ func Init(path string) (*models.Config, error) {
 		if c.Transfer != nil {
 			protocol.Transfer = c.Transfer
 		}
+
+		readFile, err := content.ReadFile("cn.mmdb")
+		if err != nil {
+			return nil, err
+		}
+
+		db, err := geoip2.FromBytes(readFile)
+		if err != nil {
+			return nil, err
+		}
+
+		shared.IPDB = db
 
 		return c, mlog.Init(c.Log)
 	}

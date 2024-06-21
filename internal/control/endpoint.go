@@ -6,6 +6,7 @@ import (
 	"errors"
 	"go.uber.org/zap"
 	"golang.org/x/net/quic"
+	"myproxy/internal"
 	"myproxy/internal/mlog"
 	"myproxy/internal/proxy"
 	"myproxy/pkg/di"
@@ -17,25 +18,25 @@ import (
 	"time"
 )
 
-type server struct {
+type endpointServer struct {
 	Ctx       context.Context
 	ServerCfg *models.Endpoint
 	Endpoint  *quic.Endpoint
 }
 
-func (s *server) Run() error {
-	endpoint, err := protocol.GetEndpoint(s.ServerCfg.NetAddr)
+func (e *endpointServer) Run() error {
+	endpoint, err := protocol.GetEndpoint(e.ServerCfg.NetAddr)
 	if err != nil {
 		return err
 	}
 
-	go listen(s.Ctx, endpoint)
+	go listen(e.Ctx, endpoint)
 
 	return nil
 }
 
-func (s *server) Close() error {
-	err := s.Endpoint.Close(s.Ctx)
+func (e *endpointServer) Close() error {
+	err := e.Endpoint.Close(e.Ctx)
 	if err != nil {
 		return err
 	}
@@ -105,13 +106,8 @@ func handStream(ctx context.Context, stream *quic.Stream) {
 	time.Sleep(time.Second * 5)
 }
 
-type Message struct {
-	Tag      string `json:"tag"`
-	NodePort uint16 `json:"nodePort"`
-}
-
-func decodePacket(payload []byte) *Message {
-	var msg Message
+func decodePacket(payload []byte) *internal.Message {
+	var msg internal.Message
 	err := json.Unmarshal(payload, &msg)
 	if err != nil {
 		mlog.Error("", zap.Error(err))
@@ -121,8 +117,8 @@ func decodePacket(payload []byte) *Message {
 	return &msg
 }
 
-func encodePacket(msg *Message, port uint16) []byte {
-	message := Message{
+func encodePacket(msg *internal.Message, port uint16) []byte {
+	message := internal.Message{
 		Tag:      msg.Tag,
 		NodePort: port,
 	}
@@ -136,7 +132,7 @@ func encodePacket(msg *Message, port uint16) []byte {
 	return m
 }
 
-func getEndpoint(msg *Message) (*quic.Endpoint, error) {
+func getEndpoint(msg *internal.Message) (*quic.Endpoint, error) {
 
 	var nd *models.NetAddr
 
@@ -154,16 +150,16 @@ func getEndpoint(msg *Message) (*quic.Endpoint, error) {
 	return endpoint, nil
 }
 
-func serverCreator(ctx context.Context, v any) (any, error) {
+func endpointServerCreator(ctx context.Context, v any) (any, error) {
 	listenConfig, ok := v.(*models.Endpoint)
 	if !ok {
 		return nil, errors.New("invalid config type")
 	}
 
-	return &server{Ctx: ctx, ServerCfg: listenConfig}, nil
+	return &endpointServer{Ctx: ctx, ServerCfg: listenConfig}, nil
 }
 
 func init() {
 	sc := reflect.TypeOf(&models.Endpoint{})
-	di.ServerContext[sc] = serverCreator
+	di.ServerContext[sc] = endpointServerCreator
 }

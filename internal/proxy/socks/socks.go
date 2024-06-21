@@ -37,7 +37,7 @@ func Process(r models.Request, stream *quic.Stream) {
 		io.Copy(&p, conn)
 		break
 	case shared.NetworkUDP:
-		l, err := net.ListenUDP(r.Network, &net.UDPAddr{Port: net2.GetFreePort()})
+		l, err := net.ListenUDP(r.Network, &net.UDPAddr{Port: int(net2.GetFreePort())})
 		if err != nil {
 			mlog.Error(err.Error())
 			return

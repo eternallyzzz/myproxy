@@ -75,11 +75,15 @@ func (n *NetAddr) String() string {
 }
 
 type Inbound struct {
-	Tag      string  `json:"tag"`
-	Address  string  `json:"address"`
-	Port     uint16  `json:"port"`
-	Protocol string  `json:"protocol"`
-	Setting  Setting `json:"setting"`
+	Tag      string   `json:"tag"`
+	Address  string   `json:"address"`
+	Port     uint16   `json:"port"`
+	Protocol string   `json:"protocol"`
+	Setting  *Setting `json:"setting"`
+}
+
+func (i *Inbound) AddrPort() string {
+	return fmt.Sprintf("%s:%d", i.Address, i.Port)
 }
 
 type Setting struct {
@@ -95,7 +99,7 @@ type Outbound struct {
 }
 
 type Routing struct {
-	Rules []Rule `json:"rules"`
+	Rules []*Rule `json:"rules"`
 }
 
 type Rule struct {

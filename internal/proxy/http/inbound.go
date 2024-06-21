@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"go.uber.org/zap"
-	"golang.org/x/net/quic"
 	"myproxy/internal/mlog"
 	"myproxy/pkg/models"
 	"myproxy/pkg/shared"
@@ -14,8 +13,8 @@ import (
 	"net/http"
 )
 
-func Inbound(ctx context.Context, s *models.Service, conn *quic.Conn) {
-	l, err := net.Listen("tcp", s.String())
+func Inbound(ctx context.Context, inb *models.Inbound) {
+	l, err := net.Listen("tcp", inb.AddrPort())
 	if err != nil {
 		mlog.Error(err.Error())
 		return
@@ -33,11 +32,11 @@ func Inbound(ctx context.Context, s *models.Service, conn *quic.Conn) {
 
 		mlog.Debug("accepted TCP connection " + accept.RemoteAddr().String())
 
-		go dispatchHttp(ctx, accept, conn)
+		go dispatchHttp(ctx, accept)
 	}
 }
 
-func dispatchHttp(ctx context.Context, client net.Conn, conn *quic.Conn) {
+func dispatchHttp(ctx context.Context, client net.Conn) {
 	var buf [4096]byte
 	n, err := client.Read(buf[:])
 	if err != nil {
