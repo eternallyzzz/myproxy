@@ -1,4 +1,4 @@
-module testDemo
+module myproxy
 
 go 1.22
 

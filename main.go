@@ -1,6 +1,6 @@
 package main
 
-import "testDemo/cmd"
+import "myproxy/cmd"
 
 func main() {
 	cmd.Run()
