@@ -3,7 +3,6 @@ package di
 import (
 	"context"
 	"errors"
-	_ "myproxy/internal/control"
 	"reflect"
 )
 

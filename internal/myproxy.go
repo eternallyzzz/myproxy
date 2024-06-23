@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"errors"
-	_ "myproxy/internal/control"
 	"myproxy/internal/mlog"
 	"myproxy/pkg/di"
 	"myproxy/pkg/interfaces"

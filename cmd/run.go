@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 	"myproxy/config"
 	"myproxy/internal"
+	_ "myproxy/internal/control"
 	"myproxy/internal/mlog"
 	"os"
 	"os/signal"
@@ -26,7 +27,11 @@ func init() {
 
 var rootCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return execute()
+		cPath, err := cmd.Flags().GetString(configPath)
+		if err != nil {
+			return err
+		}
+		return execute(cPath)
 	},
 }
 
@@ -37,12 +42,7 @@ func Run() {
 	}
 }
 
-func execute() error {
-	cPath, err := rootCmd.Flags().GetString(configPath)
-	if err != nil {
-		return err
-	}
-
+func execute(cPath string) error {
 	c, err := config.Init(cPath)
 	if err != nil {
 		return err

@@ -9,27 +9,27 @@ transfer:
 endpoint:
   address: 0.0.0.0
   port: 23456
-inbounds:
-  - tag: p1
-    address: 127.0.0.1
-    port: 1080
-    protocol: socks
-    setting:
-      user: admin
-      pass: 123
-  - tag: p2
-    address: 127.0.0.1
-    port: 1081
-    protocol: http
-outbounds:
-  - tag: s1
-    address: 127.0.0.1
-    port: 23456
-    serverPort: 10086
-routing:
-  rules:
-    - inTag: up
-      outTag: s1
-      ip:
-        - !CN
-        - !PRIVATE
+#inbounds:
+#  - tag: p1
+#    address: 127.0.0.1
+#    port: 1080
+#    protocol: socks
+#    setting:
+#      user: admin
+#      pass: 123
+#  - tag: p2
+#    address: 127.0.0.1
+#    port: 1081
+#    protocol: http
+#outbounds:
+#  - tag: s1
+#    address: 127.0.0.1
+#    port: 23456
+#    serverPort: 10086
+#routing:
+#  rules:
+#    - inTag: up
+#      outTag: s1
+#      ip:
+#        - !CN
+#        - !PRIVATE

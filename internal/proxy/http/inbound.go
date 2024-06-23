@@ -6,9 +6,12 @@ import (
 	"context"
 	"fmt"
 	"go.uber.org/zap"
+	"myproxy/internal"
 	"myproxy/internal/mlog"
+	"myproxy/internal/router"
 	"myproxy/pkg/models"
-	"myproxy/pkg/shared"
+	"myproxy/pkg/protocol"
+	net2 "myproxy/pkg/util/net"
 	"net"
 	"net/http"
 )
@@ -32,11 +35,11 @@ func Inbound(ctx context.Context, inb *models.Inbound) {
 
 		mlog.Debug("accepted TCP connection " + accept.RemoteAddr().String())
 
-		go dispatchHttp(ctx, accept)
+		go dispatchHttp(ctx, accept, inb)
 	}
 }
 
-func dispatchHttp(ctx context.Context, client net.Conn) {
+func dispatchHttp(ctx context.Context, client net.Conn, inb *models.Inbound) {
 	var buf [4096]byte
 	n, err := client.Read(buf[:])
 	if err != nil {
@@ -64,22 +67,33 @@ func dispatchHttp(ctx context.Context, client net.Conn) {
 		return
 	}
 
-	if shared.IPDB != nil {
-		country, err := shared.IPDB.Country(ip[0])
-		if err != nil {
-			mlog.Error(err.Error())
-			return
-		}
-
-		for _, filter := range shared.Filters {
-			if country.Country.IsoCode == filter {
-				mlog.Debug(fmt.Sprintf("request %s with [direct]", req.URL))
-				handleClientRequest(buf[:n], req, client)
-				return
-			}
-		}
+	r := router.Router{
+		InboundTag: inb.Tag,
+		DstAddr:    ip[0],
 	}
 
-	mlog.Debug(fmt.Sprintf("request %s with [%s]", req.URL, conn.String()))
-	outboundHttp(ctx, buf[:n], client, conn)
+	outTag := r.Process()
+
+	if outTag == "direct" {
+		mlog.Debug(fmt.Sprintf("request %s with [direct]", req.URL))
+		handleClientRequest(buf[:n], req, client)
+		return
+	}
+
+	info := internal.Osi[outTag]
+
+	endpoint, err := protocol.GetEndpoint(&models.NetAddr{Port: net2.GetFreePort()})
+	if err != nil {
+		mlog.Error(err.Error())
+		return
+	}
+
+	dial, err := protocol.GetEndPointDial(ctx, endpoint, &models.NetAddr{Address: info.Address, Port: info.NodePort})
+	if err != nil {
+		mlog.Error(err.Error())
+		return
+	}
+
+	mlog.Debug(fmt.Sprintf("request %s with [%s]", req.URL, dial.String()))
+	outboundHttp(ctx, buf[:n], client, dial)
 }

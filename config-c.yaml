@@ -6,18 +6,32 @@ transfer:
   maxBidiRemoteStreams: 100
   maxIdleTimeout: -1
   keepAlivePeriod: 30000000000
-role:
-  - client
-endpoint:
-  address: 127.0.0.1
-  port: 23456
 inbounds:
-  - address: 127.0.0.1
-    port: 10086
+  - tag: p1
+    address: 127.0.0.1
+    port: 1080
     protocol: socks
-  - address: 127.0.0.1
-    port: 2809
+    setting:
+      user: "admin"
+      pass: "123"
+  - tag: p2
+    address: 127.0.0.1
+    port: 1081
     protocol: http
-filter:
-  - CN
-  - PRIVATE
+outbounds:
+  - tag: s1
+    address: 127.0.0.1
+    port: 23456
+    serverPort: 10086
+routing:
+  rules:
+    - inTag: p1
+      outTag: s1
+      ip:
+        - !CN
+        - !PRIVATE
+    - inTag: p2
+      outTag: s1
+      ip:
+        - !CN
+        - !PRIVATE

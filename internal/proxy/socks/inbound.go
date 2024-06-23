@@ -12,12 +12,15 @@ import (
 	"golang.org/x/net/quic"
 	"io"
 	"log"
+	"myproxy/internal"
 	"myproxy/internal/mlog"
 	"myproxy/internal/router"
 	io2 "myproxy/pkg/io"
 	"myproxy/pkg/models"
+	"myproxy/pkg/protocol"
 	"myproxy/pkg/shared"
 	"myproxy/pkg/util/id"
+	net2 "myproxy/pkg/util/net"
 	"net"
 	"net/netip"
 	"strconv"
@@ -55,7 +58,7 @@ func Inbound(ctx context.Context, inb *models.Inbound) {
 	}
 }
 
-func listenUDP(ctx context.Context, l *net.UDPConn) {
+func listenUDP(ctx context.Context, l *net.UDPConn, inb *models.Inbound) {
 	defer l.Close()
 
 	buff := make([]byte, 1500)
@@ -97,32 +100,42 @@ func listenUDP(ctx context.Context, l *net.UDPConn) {
 				SrcConn: l,
 			}
 
-			if shared.IPDB != nil {
-				country, err := shared.IPDB.Country(ip)
+			r := router.Router{
+				InboundTag: inb.Tag,
+				DstAddr:    ip,
+			}
+
+			outTag := r.Process()
+
+			if outTag == "direct" {
+				data = data[10:]
+				mlog.Debug("request udp to " + dstAddr.String())
+
+				udp, err := net.DialUDP("udp", nil, dstAddr)
 				if err != nil {
 					mlog.Error(err.Error())
 					continue
 				}
 
-				for _, filter := range shared.Filters {
-					if country.Country.IsoCode == filter {
-						data = data[10:]
-						mlog.Debug("request udp to " + dstAddr.String())
-
-						udp, err := net.DialUDP("udp", nil, dstAddr)
-						if err != nil {
-							mlog.Error(err.Error())
-							continue
-						}
-
-						work.DstConn = udp
-						break
-					}
-				}
+				work.DstConn = udp
 			}
 
 			if work.DstConn == nil {
-				mlog.Debug("request udp to " + dstAddr.String() + " by " + quicConn.String())
+				info := internal.Osi[outTag]
+
+				endpoint, err := protocol.GetEndpoint(&models.NetAddr{Port: net2.GetFreePort()})
+				if err != nil {
+					mlog.Error(err.Error())
+					continue
+				}
+
+				dial, err := protocol.GetEndPointDial(ctx, endpoint, &models.NetAddr{Address: info.Address, Port: info.NodePort})
+				if err != nil {
+					mlog.Error(err.Error())
+					continue
+				}
+
+				mlog.Debug("request udp to " + dstAddr.String() + " by " + dial.String())
 
 				r := models.Request{
 					Network: shared.NetworkUDP,
@@ -140,7 +153,7 @@ func listenUDP(ctx context.Context, l *net.UDPConn) {
 					continue
 				}
 
-				stream, err := quicConn.NewStream(ctx)
+				stream, err := dial.NewStream(ctx)
 				if err != nil {
 					mlog.Error(err.Error())
 					continue
@@ -250,27 +263,29 @@ func tcp(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *models
 
 		r := router.Router{
 			InboundTag: inb.Tag,
-			DstAddr:    ip[0].String(),
+			DstAddr:    ip[0],
 		}
 
-		r.Process()
+		outTag := r.Process()
 
-		if shared.IPDB != nil {
-			country, err := shared.IPDB.Country(ip[0])
-			if err != nil {
-				mlog.Error(err.Error())
-				return
-			}
-
-			for _, filter := range shared.Filters {
-				if country.Country.IsoCode == filter {
-					directSocks(request, conn)
-					return
-				}
-			}
+		if outTag == "direct" {
+			directSocks(request, conn)
+			return
 		}
 
-		outboundSocks(ctx, request, conn, quicConn)
+		info := internal.Osi[outTag]
+		endpoint, err := protocol.GetEndpoint(&models.NetAddr{Port: net2.GetFreePort()})
+		if err != nil {
+			mlog.Error(err.Error())
+			return
+		}
+		dial, err := protocol.GetEndPointDial(ctx, endpoint, &models.NetAddr{Address: info.Address, Port: info.NodePort})
+		if err != nil {
+			mlog.Error(err.Error())
+			return
+		}
+
+		outboundSocks(ctx, request, conn, dial)
 	} else if request.Command == 3 {
 		//if request.Destination.IsValid() {
 		//	source, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", localAddr.IP.String(),
