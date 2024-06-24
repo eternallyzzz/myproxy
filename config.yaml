@@ -25,7 +25,7 @@ outbounds:
   - tag: s1
     address: 47.98.144.86
     port: 23456
-#    serverPort: 10086
+#    nodePort: 10086
 #routing:
 #  rules:
 #    - inTag: up
