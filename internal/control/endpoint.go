@@ -61,7 +61,12 @@ func listen(ctx context.Context, endpoint *quic.Endpoint) {
 }
 
 func handConn(ctx context.Context, conn *quic.Conn) {
-	defer conn.Close()
+	defer func(conn *quic.Conn) {
+		err := conn.Close()
+		if err != nil {
+			return
+		}
+	}(conn)
 
 	for {
 		stream, err := conn.AcceptStream(ctx)
@@ -78,7 +83,12 @@ func handConn(ctx context.Context, conn *quic.Conn) {
 }
 
 func handStream(ctx context.Context, stream *quic.Stream) {
-	defer stream.Close()
+	defer func(stream *quic.Stream) {
+		err := stream.Close()
+		if err != nil {
+			return
+		}
+	}(stream)
 
 	for {
 		payload, err := packet.DePacket(stream)

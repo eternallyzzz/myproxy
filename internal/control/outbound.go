@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"golang.org/x/net/quic"
 	"myproxy/internal"
 	"myproxy/pkg/di"
 	"myproxy/pkg/models"
@@ -47,21 +48,36 @@ func initial(ctx context.Context, wg *sync.WaitGroup, oub *models.Outbound, errs
 		errs = append(errs, err)
 		return
 	}
-	defer endpoint.Close(ctx)
+	defer func(endpoint *quic.Endpoint, ctx context.Context) {
+		err := endpoint.Close(ctx)
+		if err != nil {
+			return
+		}
+	}(endpoint, ctx)
 
 	dial, err := protocol.GetEndPointDial(ctx, endpoint, &models.NetAddr{Address: oub.Address, Port: oub.Port})
 	if err != nil {
 		errs = append(errs, err)
 		return
 	}
-	defer dial.Close()
+	defer func(dial *quic.Conn) {
+		err := dial.Close()
+		if err != nil {
+			return
+		}
+	}(dial)
 
 	stream, err := dial.NewStream(ctx)
 	if err != nil {
 		errs = append(errs, err)
 		return
 	}
-	defer stream.Close()
+	defer func(stream *quic.Stream) {
+		err := stream.Close()
+		if err != nil {
+			return
+		}
+	}(stream)
 
 	msg := internal.Message{
 		Tag:      oub.Tag,

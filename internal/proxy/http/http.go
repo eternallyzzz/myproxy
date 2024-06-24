@@ -110,15 +110,26 @@ func handleConnectRequest(client io.ReadWriteCloser, targetHost string, targetPo
 	targetConn, err := net.Dial("tcp", targetHost+":"+targetPort)
 	if err != nil {
 		mlog.Error("Failed to connect to target:", zap.Error(err))
-		client.Close()
+		err := client.Close()
+		if err != nil {
+			return
+		}
 		return
 	}
-	defer targetConn.Close()
+	defer func(targetConn net.Conn) {
+		err := targetConn.Close()
+		if err != nil {
+			return
+		}
+	}(targetConn)
 
 	mlog.Debug(fmt.Sprintf("connection opened to tcp:%s, local endpoint %s, remote endpoint %s",
 		targetHost+":"+targetPort, targetConn.LocalAddr(), targetConn.LocalAddr()))
 	// 2. 向客户端发送成功响应
-	client.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+	_, err = client.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+	if err != nil {
+		return
+	}
 
 	// 3. 数据转发
 	io2.Copy(targetConn, client)
@@ -129,15 +140,26 @@ func handleHTTPRequest(client io.ReadWriteCloser, targetHost string, targetPort 
 	targetConn, err := net.Dial("tcp", targetHost+":"+targetPort)
 	if err != nil {
 		mlog.Error("Failed to connect to target:", zap.Error(err))
-		client.Close()
+		err := client.Close()
+		if err != nil {
+			return
+		}
 		return
 	}
-	defer targetConn.Close()
+	defer func(targetConn net.Conn) {
+		err := targetConn.Close()
+		if err != nil {
+			return
+		}
+	}(targetConn)
 	mlog.Debug(fmt.Sprintf("connection opened to tcp:%s, local endpoint %s, remote endpoint %s",
 		targetHost+":"+targetPort, targetConn.LocalAddr(), targetConn.LocalAddr()))
 
 	// 2. 将 HTTP 请求发送给目标服务器
-	targetConn.Write(requestData)
+	_, err = targetConn.Write(requestData)
+	if err != nil {
+		return
+	}
 
 	// 3. 数据转发
 	io2.Copy(targetConn, client)

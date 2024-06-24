@@ -22,7 +22,12 @@ func Inbound(ctx context.Context, inb *models.Inbound) {
 		mlog.Error(err.Error())
 		return
 	}
-	defer l.Close()
+	defer func(l net.Listener) {
+		err := l.Close()
+		if err != nil {
+			return
+		}
+	}(l)
 
 	mlog.Info("listening TCP on " + l.Addr().String())
 

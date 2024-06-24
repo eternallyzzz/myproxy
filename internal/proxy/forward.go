@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"golang.org/x/net/quic"
 	"myproxy/internal/mlog"
 	"myproxy/internal/proxy/http"
@@ -24,11 +25,19 @@ func ListenQUIC(ctx context.Context, l *quic.Endpoint) {
 }
 
 func handConn(ctx context.Context, conn *quic.Conn) {
-	defer conn.Close()
+	defer func(conn *quic.Conn) {
+		err := conn.Close()
+		if err != nil {
+			return
+		}
+	}(conn)
 
 	for {
 		stream, err := conn.AcceptStream(ctx)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
 			mlog.Error(err.Error())
 			return
 		}

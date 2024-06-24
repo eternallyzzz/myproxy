@@ -149,7 +149,12 @@ func handleStreamOut(ctx context.Context, src *quic.Stream, outTag, id string) {
 		mlog.Error(err.Error())
 		return
 	}
-	defer dial.Close()
+	defer func(dial *quic.Conn) {
+		err := dial.Close()
+		if err != nil {
+			return
+		}
+	}(dial)
 
 	i := models.InitialPacket{
 		Protocol: shared.SOCKS,
@@ -170,7 +175,12 @@ func handleStreamOut(ctx context.Context, src *quic.Stream, outTag, id string) {
 		mlog.Error(err.Error())
 		return
 	}
-	defer newStream.Close()
+	defer func(newStream *quic.Stream) {
+		err := newStream.Close()
+		if err != nil {
+			return
+		}
+	}(newStream)
 
 	_, err = newStream.Write(payload)
 	if err != nil {
@@ -196,8 +206,18 @@ type DstWork struct {
 }
 
 func (d *DstWork) write() {
-	defer d.UDPConn.Close()
-	defer d.Stream.Close()
+	defer func(UDPConn *net.UDPConn) {
+		err := UDPConn.Close()
+		if err != nil {
+			return
+		}
+	}(d.UDPConn)
+	defer func(Stream *quic.Stream) {
+		err := Stream.Close()
+		if err != nil {
+			return
+		}
+	}(d.Stream)
 
 	for {
 		select {

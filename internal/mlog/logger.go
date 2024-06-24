@@ -142,7 +142,7 @@ func UnwrapFatal(err error, fields ...zap.Field) {
 func UnwrapWithMessage(msg string, err error, fields ...zap.Field) {
 	if err != nil {
 		fields = append(fields, zap.Error(err))
-		logger.Error("", fields...)
+		logger.Error(msg, fields...)
 	}
 }
 

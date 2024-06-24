@@ -35,7 +35,12 @@ func Inbound(ctx context.Context, inb *models.Inbound) {
 		mlog.Error(err.Error())
 		return
 	}
-	defer l.Close()
+	defer func(l *net.UDPConn) {
+		err := l.Close()
+		if err != nil {
+			return
+		}
+	}(l)
 
 	mlog.Info("listening UDP on " + udpAddr.String())
 
@@ -59,7 +64,12 @@ func Inbound(ctx context.Context, inb *models.Inbound) {
 }
 
 func listenUDP(ctx context.Context, l *net.UDPConn, inb *models.Inbound) {
-	defer l.Close()
+	defer func(l *net.UDPConn) {
+		err := l.Close()
+		if err != nil {
+			return
+		}
+	}(l)
 
 	buff := make([]byte, 1500)
 
@@ -291,7 +301,10 @@ func handSocks(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *
 			mlog.Error("Failed to write SOCKS5 UDP ASSOCIATE response:", zap.Error(err))
 			return
 		}
-		conn.Close()
+		err := conn.Close()
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -338,7 +351,12 @@ func directTcp(req socks5.Request, conn io.ReadWriteCloser) {
 		mlog.Error(err.Error())
 		return
 	}
-	defer targetConn.Close()
+	defer func(targetConn net.Conn) {
+		err := targetConn.Close()
+		if err != nil {
+			return
+		}
+	}(targetConn)
 
 	mlog.Debug("request tcp to " + req.Destination.String() + " direct")
 
@@ -363,7 +381,12 @@ type Work struct {
 
 func (w *Work) Write() {
 	defer close(w.Output)
-	defer w.DstConn.Close()
+	defer func(DstConn io.ReadWriteCloser) {
+		err := DstConn.Close()
+		if err != nil {
+			return
+		}
+	}(w.DstConn)
 
 	for {
 		select {
