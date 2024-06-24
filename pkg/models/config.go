@@ -2,20 +2,21 @@ package models
 
 import (
 	"fmt"
+	"github.com/sagernet/sing/common/metadata"
 	"net"
 	"time"
 )
 
 type InitialPacket struct {
-	Protocol string  `json:"protocol"`
-	Content  []byte  `json:"content"`
-	Request  Request `json:"request"`
+	Protocol string   `json:"protocol"`
+	Content  []byte   `json:"content"`
+	Request  *Request `json:"request"`
 }
 
 type Request struct {
-	Network string `json:"network"`
-	ID      string `json:"id"`
-	Address string `json:"address"`
+	Network string             `json:"network"`
+	ID      string             `json:"id"`
+	Dst     metadata.Socksaddr `json:"dst"`
 }
 
 type Packet struct {

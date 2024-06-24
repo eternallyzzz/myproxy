@@ -54,7 +54,7 @@ func Inbound(ctx context.Context, inb *models.Inbound) {
 			return
 		}
 
-		go tcp(ctx, client, udpAddr, inb)
+		go handSocks(ctx, client, udpAddr, inb)
 	}
 }
 
@@ -137,14 +137,12 @@ func listenUDP(ctx context.Context, l *net.UDPConn, inb *models.Inbound) {
 
 				mlog.Debug("request udp to " + dstAddr.String() + " by " + dial.String())
 
-				r := models.Request{
-					Network: shared.NetworkUDP,
-					ID:      work.ID,
-				}
-
 				i := models.InitialPacket{
 					Protocol: shared.SOCKS,
-					Request:  r,
+					Request: &models.Request{
+						Network: shared.NetworkUDP,
+						ID:      work.ID,
+					},
 				}
 
 				payload, err := json.Marshal(i)
@@ -191,16 +189,15 @@ func listenUDP(ctx context.Context, l *net.UDPConn, inb *models.Inbound) {
 	}
 }
 
-func tcp(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *models.Inbound) {
+func handSocks(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *models.Inbound) {
 	authRequest, err := socks5.ReadAuthRequest(conn)
 	if err != nil {
 		return
 	}
 
-	// 检查是否支持用户名密码认证
 	var supportAuth bool
 	for _, m := range authRequest.Methods {
-		if m == 0x02 { // 0x02 表示用户名密码认证
+		if m == 0x02 {
 			supportAuth = true
 			break
 		}
@@ -248,7 +245,6 @@ func tcp(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *models
 		}
 	}
 
-	// 解析目标地址
 	request, err := socks5.ReadRequest(conn)
 	if err != nil {
 		return
@@ -269,7 +265,7 @@ func tcp(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *models
 		outTag := r.Process()
 
 		if outTag == "direct" {
-			directSocks(request, conn)
+			directTcp(request, conn)
 			return
 		}
 
@@ -285,19 +281,8 @@ func tcp(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *models
 			return
 		}
 
-		outboundSocks(ctx, request, conn, dial)
+		outTcp(ctx, request, conn, dial)
 	} else if request.Command == 3 {
-		//if request.Destination.IsValid() {
-		//	source, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", localAddr.IP.String(),
-		//		request.Destination.Port))
-		//	if err != nil {
-		//		zlog.Error(err.Error())
-		//		return
-		//	}
-		//	log.Println("source", source.Network(), source.String())
-		//	UDPAddrs.Store(source.Network()+source.String(), dial)
-		//}
-
 		err = socks5.WriteResponse(conn, socks5.Response{ReplyCode: socks5.ReplyCodeSuccess, Bind: metadata.Socksaddr{
 			Addr: netip.AddrFrom4(localAddr.AddrPort().Addr().As4()),
 			Port: uint16(localAddr.Port),
@@ -310,17 +295,15 @@ func tcp(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *models
 	}
 }
 
-func outboundSocks(ctx context.Context, req socks5.Request, conn net.Conn, quicConn *quic.Conn) {
-	mlog.Debug("request tcp to " + req.Destination.String() + " by " + quicConn.String())
-
-	r := models.Request{
-		Network: shared.NetworkTCP,
-		Address: fmt.Sprintf("%s:%d", req.Destination.AddrString(), req.Destination.Port),
-	}
+func outTcp(ctx context.Context, req socks5.Request, conn io.ReadWriteCloser, QUICConn *quic.Conn) {
+	mlog.Debug("request tcp to " + req.Destination.String() + " by " + QUICConn.String())
 
 	i := models.InitialPacket{
 		Protocol: shared.SOCKS,
-		Request:  r,
+		Request: &models.Request{
+			Network: shared.NetworkTCP,
+			Dst:     req.Destination,
+		},
 	}
 
 	payload, err := json.Marshal(i)
@@ -329,7 +312,7 @@ func outboundSocks(ctx context.Context, req socks5.Request, conn net.Conn, quicC
 		return
 	}
 
-	stream, err := quicConn.NewStream(ctx)
+	stream, err := QUICConn.NewStream(ctx)
 	if err != nil {
 		mlog.Error(err.Error())
 		return
@@ -342,20 +325,6 @@ func outboundSocks(ctx context.Context, req socks5.Request, conn net.Conn, quicC
 	}
 	stream.Flush()
 
-	var buf [15]byte
-	_, err = stream.Read(buf[:])
-	if err != nil {
-		mlog.Error(err.Error())
-		return
-	}
-
-	// 响应客户端请求成功
-	err = socks5.WriteResponse(conn, socks5.Response{ReplyCode: socks5.ReplyCodeSuccess})
-	if err != nil {
-		mlog.Error("Failed to write SOCKS5 request response:", zap.Error(err))
-		return
-	}
-
 	p := io2.Pipe{
 		Stream: stream,
 	}
@@ -363,8 +332,8 @@ func outboundSocks(ctx context.Context, req socks5.Request, conn net.Conn, quicC
 	io2.Copy(&p, conn)
 }
 
-func directSocks(req socks5.Request, conn net.Conn) {
-	targetConn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", req.Destination.AddrString(), req.Destination.Port))
+func directTcp(req socks5.Request, conn io.ReadWriteCloser) {
+	targetConn, err := net.Dial("tcp", req.Destination.String())
 	if err != nil {
 		mlog.Error(err.Error())
 		return
@@ -373,24 +342,13 @@ func directSocks(req socks5.Request, conn net.Conn) {
 
 	mlog.Debug("request tcp to " + req.Destination.String() + " direct")
 
-	// 响应客户端请求成功
 	err = socks5.WriteResponse(conn, socks5.Response{ReplyCode: socks5.ReplyCodeSuccess})
 	if err != nil {
 		mlog.Error("Failed to write SOCKS5 request response:", zap.Error(err))
 		return
 	}
 
-	// 转发
-	go func() {
-		_, err := io.Copy(targetConn, conn)
-		if err != nil {
-			mlog.Error(err.Error())
-		}
-	}()
-	_, err = io.Copy(conn, targetConn)
-	if err != nil {
-		mlog.Error(err.Error())
-	}
+	io2.Copy(targetConn, conn)
 }
 
 type Work struct {

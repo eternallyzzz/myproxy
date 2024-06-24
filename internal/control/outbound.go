@@ -9,6 +9,7 @@ import (
 	"myproxy/pkg/models"
 	"myproxy/pkg/protocol"
 	"myproxy/pkg/util/net"
+	"myproxy/pkg/util/packet"
 	"reflect"
 	"sync"
 )
@@ -73,22 +74,21 @@ func initial(ctx context.Context, wg *sync.WaitGroup, oub *models.Outbound, errs
 		return
 	}
 
-	_, err = stream.Write(m)
+	_, err = stream.Write(packet.EnPacket(m))
 	if err != nil {
 		errs = append(errs, err)
 		return
 	}
 	stream.Flush()
 
-	var buff [128]byte
-	n, err := stream.Read(buff[:])
+	dePacket, err := packet.DePacket(stream)
 	if err != nil {
 		errs = append(errs, err)
 		return
 	}
 
 	var newMsg internal.Message
-	err = json.Unmarshal(buff[:n], &newMsg)
+	err = json.Unmarshal(dePacket, &newMsg)
 	if err != nil {
 		errs = append(errs, err)
 		return

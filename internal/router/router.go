@@ -2,6 +2,7 @@ package router
 
 import (
 	"go.uber.org/zap"
+	"myproxy/internal"
 	"myproxy/internal/mlog"
 	"myproxy/pkg/models"
 	"myproxy/pkg/shared"
@@ -22,10 +23,14 @@ type Router struct {
 }
 
 func (r *Router) Process() string {
+	if r.DstAddr == nil {
+		return getDefaultOutTag()
+	}
+
 	country, err := shared.IPDB.Country(r.DstAddr)
 	if err != nil {
 		mlog.Error("", zap.Error(err))
-		return "direct"
+		return getDefaultOutTag()
 	}
 
 	ctCode := "!" + country.Country.IsoCode
@@ -40,6 +45,25 @@ func (r *Router) Process() string {
 			}
 			outTag = rule.OutTag
 		}
+	}
+
+	if outTag == "" {
+		outTag = getDefaultOutTag()
+	}
+
+	return outTag
+}
+
+func getDefaultOutTag() string {
+	var outTag string
+
+	for _, info := range internal.Osi {
+		outTag = info.Tag
+		break
+	}
+
+	if outTag == "" {
+		outTag = "direct"
 	}
 
 	return outTag

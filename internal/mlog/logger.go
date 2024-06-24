@@ -31,7 +31,7 @@ func Init(c *models.Log) error {
 	f := func() {
 		developmentEncoderConfig := zap.NewDevelopmentEncoderConfig()
 		developmentEncoderConfig.StacktraceKey = ""
-		developmentEncoderConfig.EncodeCaller = nil
+		developmentEncoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
 		developmentEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 		consoleEncoder := zapcore.NewConsoleEncoder(developmentEncoderConfig)
 

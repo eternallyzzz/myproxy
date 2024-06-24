@@ -50,10 +50,10 @@ func handConn(ctx context.Context, conn *quic.Conn) {
 
 		switch i.Protocol {
 		case shared.HTTP:
-			go http.Process(i.Content, stream)
+			go http.Process(ctx, i.Content, stream)
 			break
 		case shared.SOCKS:
-			go socks.Process(i.Request, stream)
+			go socks.Process(ctx, i.Request, stream)
 			break
 		}
 	}

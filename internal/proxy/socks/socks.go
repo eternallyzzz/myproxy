@@ -1,61 +1,91 @@
 package socks
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/sagernet/sing/protocol/socks/socks5"
 	"golang.org/x/net/quic"
+	"myproxy/internal"
 	"myproxy/internal/mlog"
+	"myproxy/internal/router"
 	"myproxy/pkg/io"
 	"myproxy/pkg/models"
+	"myproxy/pkg/protocol"
 	"myproxy/pkg/shared"
 	net2 "myproxy/pkg/util/net"
 	"net"
 	"sync"
 )
 
-func Process(r models.Request, stream *quic.Stream) {
+func Process(ctx context.Context, r *models.Request, stream *quic.Stream) {
 	switch r.Network {
 	case shared.NetworkTCP:
-		conn, err := net.Dial(r.Network, r.Address)
+		request := socks5.Request{
+			Destination: r.Dst,
+		}
+
+		lookupIP, err := net.LookupIP(r.Dst.AddrString())
 		if err != nil {
 			mlog.Error(err.Error())
 			return
 		}
-		mlog.Debug("request to " + r.Address)
 
-		_, err = stream.Write([]byte("OK"))
-		if err != nil {
-			mlog.Error(err.Error())
-			return
+		route := router.Router{DstAddr: lookupIP[0]}
+		outTag := route.Process()
+
+		if outTag == "direct" {
+			p := io.Pipe{
+				Stream: stream,
+			}
+
+			directTcp(request, &p)
+		} else {
+			info := internal.Osi[outTag]
+			endpoint, err := protocol.GetEndpoint(&models.NetAddr{Port: net2.GetFreePort()})
+			if err != nil {
+				mlog.Error(err.Error())
+				return
+			}
+
+			dial, err := protocol.GetEndPointDial(ctx, endpoint, &models.NetAddr{Address: info.Address, Port: info.NodePort})
+			if err != nil {
+				mlog.Error(err.Error())
+				return
+			}
+
+			p := io.Pipe{Stream: stream}
+
+			outTcp(ctx, request, &p, dial)
 		}
-		stream.Flush()
-
-		p := io.Pipe{
-			Stream: stream,
-		}
-
-		io.Copy(&p, conn)
 		break
 	case shared.NetworkUDP:
-		l, err := net.ListenUDP(r.Network, &net.UDPAddr{Port: int(net2.GetFreePort())})
-		if err != nil {
-			mlog.Error(err.Error())
-			return
-		}
+		route := router.Router{}
+		outTag := route.Process()
 
-		_, err = stream.Write([]byte("OK"))
-		if err != nil {
-			mlog.Error(err.Error())
-			return
-		}
-		stream.Flush()
+		if outTag == "direct" {
+			l, err := net.ListenUDP(r.Network, &net.UDPAddr{Port: int(net2.GetFreePort())})
+			if err != nil {
+				mlog.Error(err.Error())
+				return
+			}
 
-		handleStream(stream, l, r.ID)
+			_, err = stream.Write([]byte("OK"))
+			if err != nil {
+				mlog.Error(err.Error())
+				return
+			}
+			stream.Flush()
+
+			handleStreamDirect(stream, l, r.ID)
+		} else {
+			handleStreamOut(ctx, stream, outTag, r.ID)
+		}
 		break
 	}
 }
 
-func handleStream(stream *quic.Stream, l *net.UDPConn, id string) {
+func handleStreamDirect(stream *quic.Stream, l *net.UDPConn, id string) {
 	buff := make([]byte, 1500)
 
 	for {
@@ -90,6 +120,7 @@ func handleStream(stream *quic.Stream, l *net.UDPConn, id string) {
 			}
 
 			work := &DstWork{
+				ID:      id,
 				Input:   make(chan []byte, 1024),
 				UDPConn: l,
 				Stream:  stream,
@@ -103,6 +134,55 @@ func handleStream(stream *quic.Stream, l *net.UDPConn, id string) {
 			work.Input <- data
 		}
 	}
+}
+
+func handleStreamOut(ctx context.Context, src *quic.Stream, outTag, id string) {
+	info := internal.Osi[outTag]
+	endpoint, err := protocol.GetEndpoint(&models.NetAddr{Port: net2.GetFreePort()})
+	if err != nil {
+		mlog.Error(err.Error())
+		return
+	}
+
+	dial, err := protocol.GetEndPointDial(ctx, endpoint, &models.NetAddr{Address: info.Address, Port: info.NodePort})
+	if err != nil {
+		mlog.Error(err.Error())
+		return
+	}
+	defer dial.Close()
+
+	i := models.InitialPacket{
+		Protocol: shared.SOCKS,
+		Request: &models.Request{
+			Network: shared.NetworkUDP,
+			ID:      id,
+		},
+	}
+
+	payload, err := json.Marshal(i)
+	if err != nil {
+		mlog.Error(err.Error())
+		return
+	}
+
+	newStream, err := dial.NewStream(ctx)
+	if err != nil {
+		mlog.Error(err.Error())
+		return
+	}
+	defer newStream.Close()
+
+	_, err = newStream.Write(payload)
+	if err != nil {
+		mlog.Error(err.Error())
+		return
+	}
+	newStream.Flush()
+
+	input := io.Pipe{Stream: src}
+	output := io.Pipe{Stream: newStream}
+
+	io.Copy(&output, &input)
 }
 
 var dstHm sync.Map

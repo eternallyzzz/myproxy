@@ -3,18 +3,26 @@ package http
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"go.uber.org/zap"
 	"golang.org/x/net/quic"
 	"io"
+	"myproxy/internal"
 	"myproxy/internal/mlog"
+	"myproxy/internal/router"
 	io2 "myproxy/pkg/io"
+	"myproxy/pkg/models"
+	"myproxy/pkg/protocol"
+	"myproxy/pkg/shared"
+	net2 "myproxy/pkg/util/net"
 	"net"
 	"net/http"
 	"strings"
 )
 
-func Process(payload []byte, stream *quic.Stream) {
+func Process(ctx context.Context, payload []byte, stream *quic.Stream) {
 	mlog.Debug(string(payload))
 	req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(payload)))
 	if err != nil {
@@ -28,20 +36,73 @@ func Process(payload []byte, stream *quic.Stream) {
 		return
 	}
 
-	_, err = stream.Write([]byte("ok"))
+	ip, err := net.LookupIP(host)
 	if err != nil {
-		mlog.Error(err.Error())
+		mlog.Error("Failed to resolve target host:", zap.Error(err))
 		return
 	}
-	stream.Flush()
 
-	mlog.Debug(fmt.Sprintf("request to Method [%s] Host [%s] with URL [%s]", req.Method, host, req.URL))
+	r := router.Router{DstAddr: ip[0]}
+	outTag := r.Process()
 
-	p := io2.Pipe{
-		Stream: stream,
+	if outTag == "direct" {
+		_, err = stream.Write([]byte("ok"))
+		if err != nil {
+			mlog.Error(err.Error())
+			return
+		}
+		stream.Flush()
+
+		mlog.Debug(fmt.Sprintf("request to Method [%s] Host [%s] with URL [%s]", req.Method, host, req.URL))
+
+		p := io2.Pipe{
+			Stream: stream,
+		}
+
+		handleClientRequest(payload, req, &p)
+	} else {
+		info := internal.Osi[outTag]
+		endpoint, err := protocol.GetEndpoint(&models.NetAddr{Port: net2.GetFreePort()})
+		if err != nil {
+			mlog.Error(err.Error())
+			return
+		}
+
+		dial, err := protocol.GetEndPointDial(ctx, endpoint, &models.NetAddr{Address: info.Address, Port: info.NodePort})
+		if err != nil {
+			mlog.Error(err.Error())
+			return
+		}
+
+		newStream, err := dial.NewStream(ctx)
+		if err != nil {
+			mlog.Error(err.Error())
+			return
+		}
+
+		i := models.InitialPacket{
+			Protocol: shared.HTTP,
+			Content:  payload,
+		}
+
+		m, err := json.Marshal(i)
+		if err != nil {
+			mlog.Error(err.Error())
+			return
+		}
+
+		_, err = newStream.Write(m)
+		if err != nil {
+			mlog.Error(err.Error())
+			return
+		}
+		newStream.Flush()
+
+		input := io2.Pipe{Stream: stream}
+		output := io2.Pipe{Stream: newStream}
+
+		io2.Copy(&output, &input)
 	}
-
-	handleClientRequest(payload, req, &p)
 }
 
 func handleConnectRequest(client io.ReadWriteCloser, targetHost string, targetPort string) {

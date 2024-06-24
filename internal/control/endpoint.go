@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"go.uber.org/zap"
 	"golang.org/x/net/quic"
 	"myproxy/internal"
@@ -29,6 +30,9 @@ func (e *endpointServer) Run() error {
 	if err != nil {
 		return err
 	}
+	e.Endpoint = endpoint
+
+	mlog.Warn(fmt.Sprintf("endpoint listen on %s", e.ServerCfg.NetAddr.String()))
 
 	go listen(e.Ctx, endpoint)
 
@@ -45,8 +49,6 @@ func (e *endpointServer) Close() error {
 }
 
 func listen(ctx context.Context, endpoint *quic.Endpoint) {
-	defer endpoint.Close(ctx)
-
 	for {
 		accept, err := endpoint.Accept(ctx)
 		if err != nil {
@@ -64,6 +66,9 @@ func handConn(ctx context.Context, conn *quic.Conn) {
 	for {
 		stream, err := conn.AcceptStream(ctx)
 		if err != nil {
+			if err.Error() == errConnClosed {
+				return
+			}
 			mlog.Error("", zap.Error(err))
 			return
 		}
@@ -129,7 +134,7 @@ func encodePacket(msg *internal.Message, port uint16) []byte {
 		return nil
 	}
 
-	return m
+	return packet.EnPacket(m)
 }
 
 func getEndpoint(msg *internal.Message) (*quic.Endpoint, error) {
@@ -163,3 +168,7 @@ func init() {
 	sc := reflect.TypeOf(&models.Endpoint{})
 	di.ServerContext[sc] = endpointServerCreator
 }
+
+var (
+	errConnClosed = "connection closed"
+)

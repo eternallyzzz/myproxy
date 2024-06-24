@@ -11,27 +11,27 @@ inbounds:
     address: 127.0.0.1
     port: 1080
     protocol: socks
-    setting:
-      user: "admin"
-      pass: "123"
+  #    setting:
+  #      user: "admin"
+  #      pass: "123"
   - tag: p2
     address: 127.0.0.1
     port: 1081
     protocol: http
 outbounds:
   - tag: s1
-    address: 127.0.0.1
+    address: 47.98.144.86
     port: 23456
-    serverPort: 10086
+#    serverPort: 21086
 routing:
   rules:
     - inTag: p1
       outTag: s1
       ip:
-        - !CN
-        - !PRIVATE
+        - "!CN"
+        - "!PRIVATE"
     - inTag: p2
       outTag: s1
       ip:
-        - !CN
-        - !PRIVATE
+        - "!CN"
+        - "!PRIVATE"

@@ -21,10 +21,10 @@ endpoint:
 #    address: 127.0.0.1
 #    port: 1081
 #    protocol: http
-#outbounds:
-#  - tag: s1
-#    address: 127.0.0.1
-#    port: 23456
+outbounds:
+  - tag: s1
+    address: 47.98.144.86
+    port: 23456
 #    serverPort: 10086
 #routing:
 #  rules:

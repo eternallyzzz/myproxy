@@ -24,7 +24,7 @@ func Inbound(ctx context.Context, inb *models.Inbound) {
 	}
 	defer l.Close()
 
-	mlog.Debug("listening TCP on " + l.Addr().String())
+	mlog.Info("listening TCP on " + l.Addr().String())
 
 	for {
 		accept, err := l.Accept()
