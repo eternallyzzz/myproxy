@@ -15,7 +15,10 @@ func Copy(dst io.ReadWriteCloser, src io.ReadWriteCloser) {
 		defer i.Close()
 		defer o.Close()
 
-		_, err := io.Copy(i, o)
+		var buf [64 * 1024]byte
+
+		_, err := io.CopyBuffer(i, o, buf[:])
+		//_, err := io.Copy(i, o)
 		if err != nil && !mlog.Ignore(err) {
 			errs = append(errs, err)
 		}

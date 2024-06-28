@@ -5,6 +5,5 @@ import (
 )
 
 var (
-	Filters []string
-	IPDB    *geoip2.Reader
+	IPDB *geoip2.Reader
 )

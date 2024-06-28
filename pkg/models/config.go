@@ -50,11 +50,11 @@ type Endpoint struct {
 }
 
 type QUICConfig struct {
-	MaxBidiRemoteStreams     int64         `json:"maxBidiRemoteStreams"`
-	MaxUniRemoteStreams      int64         `json:"maxUniRemoteStreams"`
-	MaxStreamReadBufferSize  int64         `json:"maxStreamReadBufferSize"`
-	MaxStreamWriteBufferSize int64         `json:"maxStreamWriteBufferSize"`
-	MaxConnReadBufferSize    int64         `json:"maxConnReadBufferSize"`
+	MaxBidiRemoteStreams     uint64        `json:"maxBidiRemoteStreams"`
+	MaxUniRemoteStreams      uint64        `json:"maxUniRemoteStreams"`
+	MaxStreamReadBufferSize  uint64        `json:"maxStreamReadBufferSize"`
+	MaxStreamWriteBufferSize uint64        `json:"maxStreamWriteBufferSize"`
+	MaxConnReadBufferSize    uint64        `json:"maxConnReadBufferSize"`
 	RequireAddressValidation bool          `json:"requireAddressValidation"`
 	HandshakeTimeout         time.Duration `json:"handshakeTimeout"`
 	MaxIdleTimeout           time.Duration `json:"maxIdleTimeout"`

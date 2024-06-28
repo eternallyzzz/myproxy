@@ -58,15 +58,18 @@ func getCliCfg(addr string) *quic.Config {
 
 func convertToQUIC(q *quic.Config) {
 	if Transfer != nil {
-		q.MaxStreamReadBufferSize = Transfer.MaxStreamReadBufferSize
-		q.MaxStreamWriteBufferSize = Transfer.MaxStreamWriteBufferSize
-		q.MaxConnReadBufferSize = Transfer.MaxConnReadBufferSize
-		q.MaxBidiRemoteStreams = Transfer.MaxBidiRemoteStreams
-		q.MaxUniRemoteStreams = Transfer.MaxUniRemoteStreams
-		q.HandshakeTimeout = Transfer.HandshakeTimeout
-		q.MaxIdleTimeout = Transfer.MaxIdleTimeout
-		q.KeepAlivePeriod = Transfer.KeepAlivePeriod
+		q.MaxStreamReadBufferSize = int64(Transfer.MaxStreamReadBufferSize << 20)
+		q.MaxStreamWriteBufferSize = int64(Transfer.MaxStreamWriteBufferSize << 20)
+		q.MaxConnReadBufferSize = int64(Transfer.MaxConnReadBufferSize << 20)
+		q.MaxBidiRemoteStreams = int64(Transfer.MaxBidiRemoteStreams)
+		q.MaxUniRemoteStreams = int64(Transfer.MaxUniRemoteStreams)
+		q.HandshakeTimeout = Transfer.HandshakeTimeout * time.Second
+		q.MaxIdleTimeout = Transfer.MaxIdleTimeout * time.Second
+		q.KeepAlivePeriod = Transfer.KeepAlivePeriod * time.Second
 		q.RequireAddressValidation = Transfer.RequireAddressValidation
+	}
+	if q.MaxIdleTimeout < 0 {
+		q.MaxIdleTimeout = -1
 	}
 
 	if Transfer.MaxBidiRemoteStreams == 0 {

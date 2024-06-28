@@ -5,7 +5,10 @@ log:
 transfer:
   maxBidiRemoteStreams: 100
   maxIdleTimeout: -1
-  keepAlivePeriod: 30000000000
+  keepAlivePeriod: 10
+#  maxStreamReadBufferSize: 100
+#  maxStreamWriteBufferSize: 100
+#  maxConnReadBufferSize: 250
 endpoint:
   address: 0.0.0.0
   port: 23456
@@ -21,10 +24,10 @@ endpoint:
 #    address: 127.0.0.1
 #    port: 1081
 #    protocol: http
-outbounds:
-  - tag: s1
-    address: 47.98.144.86
-    port: 23456
+#outbounds:
+#  - tag: s1
+#    address: 47.98.144.86
+#    port: 23456
 #    nodePort: 10086
 #routing:
 #  rules:
