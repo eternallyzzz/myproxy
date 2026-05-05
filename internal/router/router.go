@@ -8,12 +8,18 @@ import (
 	"myproxy/pkg/shared"
 	"net"
 	"strings"
+	"sync"
 )
 
-var rules []*models.Rule
+var (
+	rules   []*models.Rule
+	rulesMu sync.RWMutex
+)
 
 func Run(v []*models.Rule) {
+	rulesMu.Lock()
 	rules = v
+	rulesMu.Unlock()
 }
 
 type Router struct {
@@ -36,16 +42,19 @@ func (r *Router) Process() string {
 	ctCode := "!" + country.Country.IsoCode
 
 	var outTag string
+	rulesMu.RLock()
 	for _, rule := range rules {
 		if r.InboundTag == rule.InTag {
 			for _, ip := range rule.IP {
 				if ctCode == strings.ToUpper(ip) {
+					rulesMu.RUnlock()
 					return "direct"
 				}
 			}
 			outTag = rule.OutTag
 		}
 	}
+	rulesMu.RUnlock()
 
 	if outTag == "" {
 		outTag = getDefaultOutTag()
@@ -57,10 +66,10 @@ func (r *Router) Process() string {
 func getDefaultOutTag() string {
 	var outTag string
 
-	for _, info := range internal.Osi {
+	internal.RangeOsi(func(key string, info internal.OutSeverInfo) bool {
 		outTag = info.Tag
-		break
-	}
+		return false
+	})
 
 	if outTag == "" {
 		outTag = "direct"

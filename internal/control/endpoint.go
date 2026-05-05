@@ -98,6 +98,9 @@ func handStream(ctx context.Context, stream *quic.Stream) {
 		}
 
 		message := decodePacket(payload)
+		if message == nil {
+			return
+		}
 
 		endpoint, err := getEndpoint(message)
 		if err != nil {
@@ -106,6 +109,10 @@ func handStream(ctx context.Context, stream *quic.Stream) {
 		}
 
 		m := encodePacket(message, endpoint.LocalAddr().Port())
+		if m == nil {
+			mlog.Error("encode packet failed")
+			return
+		}
 
 		_, err = stream.Write(m)
 		if err != nil {

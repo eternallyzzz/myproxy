@@ -25,13 +25,17 @@ func Process(ctx context.Context, r *models.Request, stream *quic.Stream) {
 			Destination: r.Dst,
 		}
 
-		lookupIP, err := net.LookupIP(r.Dst.AddrString())
+		ips, err := net2.LookupIP(r.Dst.AddrString())
 		if err != nil {
 			mlog.Error(err.Error())
 			return
 		}
+		if len(ips) == 0 {
+			mlog.Error("no IPs resolved for " + r.Dst.AddrString())
+			return
+		}
 
-		route := router.Router{DstAddr: lookupIP[0]}
+		route := router.Router{DstAddr: ips[0]}
 		outTag := route.Process()
 
 		if outTag == "direct" {
@@ -41,22 +45,16 @@ func Process(ctx context.Context, r *models.Request, stream *quic.Stream) {
 
 			directTcp(request, &p)
 		} else {
-			info := internal.Osi[outTag]
-			endpoint, err := protocol.GetEndpoint(&models.NetAddr{Port: net2.GetFreePort()})
-			if err != nil {
-				mlog.Error(err.Error())
+			info, ok := internal.GetOsi(outTag)
+			if !ok {
+				mlog.Error("outbound not found: " + outTag)
 				return
 			}
-
-			dial, err := protocol.GetEndPointDial(ctx, endpoint, &models.NetAddr{Address: info.Address, Port: info.NodePort})
-			if err != nil {
-				mlog.Error(err.Error())
-				return
-			}
+			remoteAddr := &models.NetAddr{Address: info.Address, Port: info.NodePort}
 
 			p := io.Pipe{Stream: stream}
 
-			outTcp(ctx, request, &p, dial)
+			outTcp(ctx, request, &p, remoteAddr)
 		}
 		break
 	case shared.NetworkUDP:
@@ -98,6 +96,9 @@ func handleStreamDirect(stream *quic.Stream, l *net.UDPConn, id string) {
 		data := buff[:n]
 
 		if data[0] == 0 && data[1] == 0 {
+			if len(data) < 10 {
+				continue
+			}
 			addrOffset := 4
 			portOffset := 8
 
@@ -125,6 +126,7 @@ func handleStreamDirect(stream *quic.Stream, l *net.UDPConn, id string) {
 				UDPConn: l,
 				Stream:  stream,
 				Dst:     dstAddr,
+				Key:     id + dstAddr.String(),
 			}
 
 			go work.write()
@@ -137,24 +139,24 @@ func handleStreamDirect(stream *quic.Stream, l *net.UDPConn, id string) {
 }
 
 func handleStreamOut(ctx context.Context, src *quic.Stream, outTag, id string) {
-	info := internal.Osi[outTag]
-	endpoint, err := protocol.GetEndpoint(&models.NetAddr{Port: net2.GetFreePort()})
-	if err != nil {
-		mlog.Error(err.Error())
+	info, ok := internal.GetOsi(outTag)
+	if !ok {
+		mlog.Error("outbound not found: " + outTag)
 		return
 	}
+	remoteAddr := &models.NetAddr{Address: info.Address, Port: info.NodePort}
 
-	dial, err := protocol.GetEndPointDial(ctx, endpoint, &models.NetAddr{Address: info.Address, Port: info.NodePort})
+	newStream, err := protocol.StreamPool(ctx, remoteAddr)
 	if err != nil {
 		mlog.Error(err.Error())
 		return
 	}
-	defer func(dial *quic.Conn) {
-		err := dial.Close()
+	defer func(newStream *quic.Stream) {
+		err := newStream.Close()
 		if err != nil {
 			return
 		}
-	}(dial)
+	}(newStream)
 
 	i := models.InitialPacket{
 		Protocol: shared.SOCKS,
@@ -169,18 +171,6 @@ func handleStreamOut(ctx context.Context, src *quic.Stream, outTag, id string) {
 		mlog.Error(err.Error())
 		return
 	}
-
-	newStream, err := dial.NewStream(ctx)
-	if err != nil {
-		mlog.Error(err.Error())
-		return
-	}
-	defer func(newStream *quic.Stream) {
-		err := newStream.Close()
-		if err != nil {
-			return
-		}
-	}(newStream)
 
 	_, err = newStream.Write(payload)
 	if err != nil {
@@ -203,9 +193,11 @@ type DstWork struct {
 	UDPConn *net.UDPConn
 	Stream  *quic.Stream
 	Dst     *net.UDPAddr
+	Key     string
 }
 
 func (d *DstWork) write() {
+	defer dstHm.Delete(d.Key)
 	defer func(UDPConn *net.UDPConn) {
 		err := UDPConn.Close()
 		if err != nil {

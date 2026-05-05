@@ -22,10 +22,11 @@ type outboundServer struct {
 
 func (o *outboundServer) Run() error {
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 	var errs []error
 	for _, outbound := range o.Outbounds {
 		wg.Add(1)
-		go initial(o.Ctx, &wg, outbound, errs)
+		go initial(o.Ctx, &wg, &mu, &errs, outbound)
 	}
 	wg.Wait()
 	err := errors.Join(errs...)
@@ -40,12 +41,14 @@ func (o *outboundServer) Close() error {
 	return nil
 }
 
-func initial(ctx context.Context, wg *sync.WaitGroup, oub *models.Outbound, errs []error) {
+func initial(ctx context.Context, wg *sync.WaitGroup, mu *sync.Mutex, errs *[]error, oub *models.Outbound) {
 	defer wg.Done()
 
 	endpoint, err := protocol.GetEndpoint(&models.NetAddr{Port: net.GetFreePort()})
 	if err != nil {
-		errs = append(errs, err)
+		mu.Lock()
+		*errs = append(*errs, err)
+		mu.Unlock()
 		return
 	}
 	defer func(endpoint *quic.Endpoint, ctx context.Context) {
@@ -57,7 +60,9 @@ func initial(ctx context.Context, wg *sync.WaitGroup, oub *models.Outbound, errs
 
 	dial, err := protocol.GetEndPointDial(ctx, endpoint, &models.NetAddr{Address: oub.Address, Port: oub.Port})
 	if err != nil {
-		errs = append(errs, err)
+		mu.Lock()
+		*errs = append(*errs, err)
+		mu.Unlock()
 		return
 	}
 	defer func(dial *quic.Conn) {
@@ -69,7 +74,9 @@ func initial(ctx context.Context, wg *sync.WaitGroup, oub *models.Outbound, errs
 
 	stream, err := dial.NewStream(ctx)
 	if err != nil {
-		errs = append(errs, err)
+		mu.Lock()
+		*errs = append(*errs, err)
+		mu.Unlock()
 		return
 	}
 	defer func(stream *quic.Stream) {
@@ -86,35 +93,43 @@ func initial(ctx context.Context, wg *sync.WaitGroup, oub *models.Outbound, errs
 
 	m, err := json.Marshal(&msg)
 	if err != nil {
-		errs = append(errs, err)
+		mu.Lock()
+		*errs = append(*errs, err)
+		mu.Unlock()
 		return
 	}
 
 	_, err = stream.Write(packet.EnPacket(m))
 	if err != nil {
-		errs = append(errs, err)
+		mu.Lock()
+		*errs = append(*errs, err)
+		mu.Unlock()
 		return
 	}
 	stream.Flush()
 
 	dePacket, err := packet.DePacket(stream)
 	if err != nil {
-		errs = append(errs, err)
+		mu.Lock()
+		*errs = append(*errs, err)
+		mu.Unlock()
 		return
 	}
 
 	var newMsg internal.Message
 	err = json.Unmarshal(dePacket, &newMsg)
 	if err != nil {
-		errs = append(errs, err)
+		mu.Lock()
+		*errs = append(*errs, err)
+		mu.Unlock()
 		return
 	}
 
-	internal.Osi[oub.Tag] = internal.OutSeverInfo{
+	internal.SetOsi(oub.Tag, internal.OutSeverInfo{
 		Tag:      oub.Tag,
 		Address:  oub.Address,
 		NodePort: newMsg.NodePort,
-	}
+	})
 }
 
 func outboundServerCreator(ctx context.Context, v any) (any, error) {

@@ -11,8 +11,6 @@ import (
 	"myproxy/internal/mlog"
 	"os"
 	"os/signal"
-	"runtime"
-	"runtime/debug"
 	"syscall"
 	"time"
 )
@@ -62,9 +60,6 @@ func execute(cPath string) error {
 			mlog.Error("", zap.Error(err))
 		}
 	}(instance)
-
-	runtime.GC()
-	debug.FreeOSMemory()
 
 	{
 		osSignals := make(chan os.Signal, 1)

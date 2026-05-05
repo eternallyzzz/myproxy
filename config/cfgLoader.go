@@ -42,7 +42,7 @@ func loadConfig(path string) (*models.Config, error) {
 	if path == "" {
 		wd, _ := os.Getwd()
 		path = wd + shared.ConfigBase
-		if file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0777); err != nil {
+		if file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600); err != nil {
 			return nil, err
 		} else {
 			_ = file.Close()

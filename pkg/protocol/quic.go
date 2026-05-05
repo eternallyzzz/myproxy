@@ -41,7 +41,7 @@ func getSrvCfg() *quic.Config {
 	}
 	convertToQUIC(&q)
 
-	if Transfer.TLS != nil {
+	if Transfer != nil && Transfer.TLS != nil {
 		q.TLSConfig = tls.GetTLSConfigWithCustom(shared.ServerTLS, "", Transfer.TLS.Crt, Transfer.TLS.Key)
 	}
 
@@ -72,15 +72,17 @@ func convertToQUIC(q *quic.Config) {
 		q.MaxIdleTimeout = -1
 	}
 
-	if Transfer.MaxBidiRemoteStreams == 0 {
-		q.MaxBidiRemoteStreams = maxStreams
-	}
+	if Transfer != nil {
+		if Transfer.MaxBidiRemoteStreams == 0 {
+			q.MaxBidiRemoteStreams = maxStreams
+		}
 
-	if Transfer.MaxIdleTimeout == 0 {
-		q.MaxIdleTimeout = maxIdle
-	}
+		if Transfer.MaxIdleTimeout == 0 {
+			q.MaxIdleTimeout = maxIdle
+		}
 
-	if Transfer.KeepAlivePeriod == 0 {
-		q.KeepAlivePeriod = keepAlive
+		if Transfer.KeepAlivePeriod == 0 {
+			q.KeepAlivePeriod = keepAlive
+		}
 	}
 }

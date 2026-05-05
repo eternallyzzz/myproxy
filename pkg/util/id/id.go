@@ -16,8 +16,7 @@ func GetSnowflakeID() snowflake.ID {
 	once.Do(func() {
 		nod, err := snowflake.NewNode(rand.Int63n(1023))
 		if err != nil {
-			mlog.Error(err.Error())
-			return
+			mlog.Fatal("failed to create snowflake node: " + err.Error())
 		}
 		node = nod
 	})

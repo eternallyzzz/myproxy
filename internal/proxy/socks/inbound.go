@@ -9,9 +9,7 @@ import (
 	"github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/protocol/socks/socks5"
 	"go.uber.org/zap"
-	"golang.org/x/net/quic"
 	"io"
-	"log"
 	"myproxy/internal"
 	"myproxy/internal/mlog"
 	"myproxy/internal/router"
@@ -48,7 +46,8 @@ func Inbound(ctx context.Context, inb *models.Inbound) {
 
 	tl, err := net.Listen("tcp", inb.AddrPort())
 	if err != nil {
-		log.Fatal("Failed to start listener:", err)
+		mlog.Error("Failed to start TCP listener: " + err.Error())
+		return
 	}
 	mlog.Info("listening TCP on " + tl.Addr().String())
 
@@ -91,6 +90,9 @@ func listenUDP(ctx context.Context, l *net.UDPConn, inb *models.Inbound) {
 		}
 
 		if data[0] == 0 && data[1] == 0 {
+			if len(data) < 10 {
+				continue
+			}
 			addrOffset := 4
 			portOffset := 8
 
@@ -108,6 +110,7 @@ func listenUDP(ctx context.Context, l *net.UDPConn, inb *models.Inbound) {
 				Input:   make(chan []byte, 1024),
 				Output:  make(chan []byte, 1024),
 				SrcConn: l,
+				Key:     addr.Network() + addr.String(),
 			}
 
 			r := router.Router{
@@ -131,21 +134,20 @@ func listenUDP(ctx context.Context, l *net.UDPConn, inb *models.Inbound) {
 			}
 
 			if work.DstConn == nil {
-				info := internal.Osi[outTag]
+				info, ok := internal.GetOsi(outTag)
+				if !ok {
+					mlog.Error("outbound not found: " + outTag)
+					continue
+				}
+				remoteAddr := &models.NetAddr{Address: info.Address, Port: info.NodePort}
 
-				endpoint, err := protocol.GetEndpoint(&models.NetAddr{Port: net2.GetFreePort()})
+				stream, err := protocol.StreamPool(ctx, remoteAddr)
 				if err != nil {
 					mlog.Error(err.Error())
 					continue
 				}
 
-				dial, err := protocol.GetEndPointDial(ctx, endpoint, &models.NetAddr{Address: info.Address, Port: info.NodePort})
-				if err != nil {
-					mlog.Error(err.Error())
-					continue
-				}
-
-				mlog.Debug("request udp to " + dstAddr.String() + " by " + dial.String())
+				mlog.Debug("request udp to " + dstAddr.String() + " by " + remoteAddr.String())
 
 				i := models.InitialPacket{
 					Protocol: shared.SOCKS,
@@ -161,25 +163,12 @@ func listenUDP(ctx context.Context, l *net.UDPConn, inb *models.Inbound) {
 					continue
 				}
 
-				stream, err := dial.NewStream(ctx)
-				if err != nil {
-					mlog.Error(err.Error())
-					continue
-				}
-
 				_, err = stream.Write(payload)
 				if err != nil {
 					mlog.Error(err.Error())
 					continue
 				}
 				stream.Flush()
-
-				var buf [15]byte
-				_, err = stream.Read(buf[:])
-				if err != nil {
-					mlog.Error(err.Error())
-					continue
-				}
 
 				p := io2.Pipe{
 					Stream: stream,
@@ -261,15 +250,19 @@ func handSocks(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *
 	}
 
 	if request.Command == 1 {
-		ip, err := net.LookupIP(request.Destination.AddrString())
+		ips, err := net2.LookupIP(request.Destination.AddrString())
 		if err != nil {
 			mlog.Error(err.Error())
+			return
+		}
+		if len(ips) == 0 {
+			mlog.Error("no IPs resolved for " + request.Destination.AddrString())
 			return
 		}
 
 		r := router.Router{
 			InboundTag: inb.Tag,
-			DstAddr:    ip[0],
+			DstAddr:    ips[0],
 		}
 
 		outTag := r.Process()
@@ -279,19 +272,14 @@ func handSocks(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *
 			return
 		}
 
-		info := internal.Osi[outTag]
-		endpoint, err := protocol.GetEndpoint(&models.NetAddr{Port: net2.GetFreePort()})
-		if err != nil {
-			mlog.Error(err.Error())
+		info, ok := internal.GetOsi(outTag)
+		if !ok {
+			mlog.Error("outbound not found: " + outTag)
 			return
 		}
-		dial, err := protocol.GetEndPointDial(ctx, endpoint, &models.NetAddr{Address: info.Address, Port: info.NodePort})
-		if err != nil {
-			mlog.Error(err.Error())
-			return
-		}
+		remoteAddr := &models.NetAddr{Address: info.Address, Port: info.NodePort}
 
-		outTcp(ctx, request, conn, dial)
+		outTcp(ctx, request, conn, remoteAddr)
 	} else if request.Command == 3 {
 		err = socks5.WriteResponse(conn, socks5.Response{ReplyCode: socks5.ReplyCodeSuccess, Bind: metadata.Socksaddr{
 			Addr: netip.AddrFrom4(localAddr.AddrPort().Addr().As4()),
@@ -308,8 +296,14 @@ func handSocks(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *
 	}
 }
 
-func outTcp(ctx context.Context, req socks5.Request, conn io.ReadWriteCloser, QUICConn *quic.Conn) {
-	mlog.Debug("request tcp to " + req.Destination.String() + " by " + QUICConn.String())
+func outTcp(ctx context.Context, req socks5.Request, conn io.ReadWriteCloser, remoteAddr *models.NetAddr) {
+	mlog.Debug("request tcp to " + req.Destination.String() + " by " + remoteAddr.String())
+
+	stream, err := protocol.StreamPool(ctx, remoteAddr)
+	if err != nil {
+		mlog.Error(err.Error())
+		return
+	}
 
 	i := models.InitialPacket{
 		Protocol: shared.SOCKS,
@@ -320,12 +314,6 @@ func outTcp(ctx context.Context, req socks5.Request, conn io.ReadWriteCloser, QU
 	}
 
 	payload, err := json.Marshal(i)
-	if err != nil {
-		mlog.Error(err.Error())
-		return
-	}
-
-	stream, err := QUICConn.NewStream(ctx)
 	if err != nil {
 		mlog.Error(err.Error())
 		return
@@ -377,9 +365,11 @@ type Work struct {
 	Output  chan []byte
 	SrcConn *net.UDPConn
 	DstConn io.ReadWriteCloser
+	Key     string
 }
 
 func (w *Work) Write() {
+	defer hm.Delete(w.Key)
 	defer close(w.Output)
 	defer func(DstConn io.ReadWriteCloser) {
 		err := DstConn.Close()
@@ -430,7 +420,6 @@ func (w *Work) Read() {
 		portBytes := make([]byte, 2)
 		binary.BigEndian.PutUint16(portBytes, uint16(p.Addr.Port))
 
-		// Write the IP and port to the buffer
 		buffer.Write(ipBytes)
 		buffer.Write(portBytes)
 		buffer.Write(p.Content)

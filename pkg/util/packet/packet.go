@@ -3,13 +3,20 @@ package packet
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 )
+
+const maxPayloadSize = 16 * 1024 * 1024
 
 func DePacket(r io.Reader) ([]byte, error) {
 	var l int64
 	if err := binary.Read(r, binary.BigEndian, &l); err != nil {
 		return nil, err
+	}
+
+	if l < 0 || l > maxPayloadSize {
+		return nil, errors.New("invalid packet length")
 	}
 
 	buf := make([]byte, l)

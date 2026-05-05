@@ -45,7 +45,7 @@ func Inbound(ctx context.Context, inb *models.Inbound) {
 }
 
 func dispatchHttp(ctx context.Context, client net.Conn, inb *models.Inbound) {
-	var buf [4096]byte
+	var buf [65536]byte
 	n, err := client.Read(buf[:])
 	if err != nil {
 		mlog.Error("Failed to read client request:", zap.Error(err))
@@ -66,15 +66,19 @@ func dispatchHttp(ctx context.Context, client net.Conn, inb *models.Inbound) {
 
 	mlog.Debug(fmt.Sprintf("request to Method [%s] Host [%s] with URL [%s]", req.Method, host, req.URL))
 
-	ip, err := net.LookupIP(host)
+	ips, err := net2.LookupIP(host)
 	if err != nil {
 		mlog.Error(err.Error())
+		return
+	}
+	if len(ips) == 0 {
+		mlog.Error("no IPs resolved for " + host)
 		return
 	}
 
 	r := router.Router{
 		InboundTag: inb.Tag,
-		DstAddr:    ip[0],
+		DstAddr:    ips[0],
 	}
 
 	outTag := r.Process()
@@ -85,20 +89,19 @@ func dispatchHttp(ctx context.Context, client net.Conn, inb *models.Inbound) {
 		return
 	}
 
-	info := internal.Osi[outTag]
+	info, ok := internal.GetOsi(outTag)
+	if !ok {
+		mlog.Error("outbound not found: " + outTag)
+		return
+	}
+	remoteAddr := &models.NetAddr{Address: info.Address, Port: info.NodePort}
 
-	endpoint, err := protocol.GetEndpoint(&models.NetAddr{Port: net2.GetFreePort()})
+	stream, err := protocol.StreamPool(ctx, remoteAddr)
 	if err != nil {
 		mlog.Error(err.Error())
 		return
 	}
 
-	dial, err := protocol.GetEndPointDial(ctx, endpoint, &models.NetAddr{Address: info.Address, Port: info.NodePort})
-	if err != nil {
-		mlog.Error(err.Error())
-		return
-	}
-
-	mlog.Debug(fmt.Sprintf("request %s with [%s]", req.URL, dial.String()))
-	outboundHttp(ctx, buf[:n], client, dial)
+	mlog.Debug(fmt.Sprintf("request %s with [%s]", req.URL, remoteAddr.String()))
+	outboundHttp(ctx, buf[:n], client, stream)
 }

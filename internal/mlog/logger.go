@@ -9,14 +9,15 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 var (
-	lock    sync.Mutex
-	logger  *zap.Logger
-	preFile *os.File
-	levels  = map[string]zapcore.Level{
+	lock     sync.Mutex
+	logger   atomic.Pointer[zap.Logger]
+	preFile  *os.File
+	levels   = map[string]zapcore.Level{
 		"debug": zap.DebugLevel,
 		"info":  zap.InfoLevel,
 		"warn":  zap.WarnLevel,
@@ -28,6 +29,9 @@ var (
 )
 
 func Init(c *models.Log) error {
+	if c == nil {
+		c = &models.Log{}
+	}
 	f := func() {
 		developmentEncoderConfig := zap.NewDevelopmentEncoderConfig()
 		developmentEncoderConfig.StacktraceKey = ""
@@ -47,7 +51,7 @@ func Init(c *models.Log) error {
 			logPath = fmt.Sprintf("%s/error_%s.log", c.LogFilePath, time.Now().Format(time.DateOnly))
 		}
 
-		file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0777)
+		file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0600)
 		if err != nil {
 			log.Println(err)
 			return
@@ -56,10 +60,10 @@ func Init(c *models.Log) error {
 		fL := defaultLevel
 		cL := defaultLevel
 
-		if c != nil && c.FileLevel != "" {
+		if c.FileLevel != "" {
 			fL = levels[c.FileLevel]
 		}
-		if c != nil && c.ConsoleLevel != "" {
+		if c.ConsoleLevel != "" {
 			cL = levels[c.ConsoleLevel]
 		}
 
@@ -78,11 +82,12 @@ func Init(c *models.Log) error {
 		lock.Lock()
 		defer lock.Unlock()
 
-		logger = zap.New(zapcore.NewTee(consoleCore, fileCore),
+		l := zap.New(zapcore.NewTee(consoleCore, fileCore),
 			zap.AddCaller(),
 			zap.AddCallerSkip(1),
 			zap.AddStacktrace(zapcore.ErrorLevel),
 		)
+		logger.Store(l)
 
 		if preFile != nil {
 			_ = preFile.Close()
@@ -106,43 +111,43 @@ func Init(c *models.Log) error {
 }
 
 func Info(msg string, fields ...zap.Field) {
-	logger.Info(msg, fields...)
+	logger.Load().Info(msg, fields...)
 }
 
 func Error(msg string, fields ...zap.Field) {
-	logger.Error(msg, fields...)
+	logger.Load().Error(msg, fields...)
 }
 
 func Warn(msg string, fields ...zap.Field) {
-	logger.Warn(msg, fields...)
+	logger.Load().Warn(msg, fields...)
 }
 
 func Debug(msg string, fields ...zap.Field) {
-	logger.Debug(msg, fields...)
+	logger.Load().Debug(msg, fields...)
 }
 
 func Fatal(msg string, fields ...zap.Field) {
-	logger.Fatal(msg, fields...)
+	logger.Load().Fatal(msg, fields...)
 }
 
 func Unwrap(err error, fields ...zap.Field) {
 	if err != nil {
 		fields = append(fields, zap.Error(err))
-		logger.Error("", fields...)
+		logger.Load().Error("", fields...)
 	}
 }
 
 func UnwrapFatal(err error, fields ...zap.Field) {
 	if err != nil {
 		fields = append(fields, zap.Error(err))
-		logger.Fatal("", fields...)
+		logger.Load().Fatal("", fields...)
 	}
 }
 
 func UnwrapWithMessage(msg string, err error, fields ...zap.Field) {
 	if err != nil {
 		fields = append(fields, zap.Error(err))
-		logger.Error(msg, fields...)
+		logger.Load().Error(msg, fields...)
 	}
 }
 
