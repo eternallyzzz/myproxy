@@ -6,33 +6,6 @@ transfer:
   maxBidiRemoteStreams: 100
   maxIdleTimeout: -1
   keepAlivePeriod: 10
-#  maxStreamReadBufferSize: 100
-#  maxStreamWriteBufferSize: 100
-#  maxConnReadBufferSize: 250
 endpoint:
   address: 0.0.0.0
   port: 23456
-#inbounds:
-#  - tag: p1
-#    address: 127.0.0.1
-#    port: 1080
-#    protocol: socks
-#    setting:
-#      user: admin
-#      pass: 123
-#  - tag: p2
-#    address: 127.0.0.1
-#    port: 1081
-#    protocol: http
-#outbounds:
-#  - tag: s1
-#    address: 47.98.144.86
-#    port: 23456
-#    nodePort: 10086
-#routing:
-#  rules:
-#    - inTag: up
-#      outTag: s1
-#      ip:
-#        - !CN
-#        - !PRIVATE
