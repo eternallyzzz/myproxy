@@ -33,6 +33,10 @@ func (r *Router) Process() string {
 		return getDefaultOutTag()
 	}
 
+	if shared.IPDB == nil {
+		return getDefaultOutTag()
+	}
+
 	country, err := shared.IPDB.Country(r.DstAddr)
 	if err != nil {
 		mlog.Error("", zap.Error(err))

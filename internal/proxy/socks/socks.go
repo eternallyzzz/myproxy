@@ -107,7 +107,11 @@ func handleStreamDirect(stream *quic.Stream, l *net.UDPConn, id string) {
 			portBytes := data[portOffset : portOffset+2]
 			port := int(portBytes[0])<<8 + int(portBytes[1])
 
-			dstAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", ip.String(), port))
+			dstAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", ip.String(), port))
+			if err != nil {
+				mlog.Error(err.Error())
+				continue
+			}
 			data = data[10:]
 
 			mlog.Debug("request udp to " + dstAddr.String())

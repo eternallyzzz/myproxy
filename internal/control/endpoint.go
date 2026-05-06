@@ -16,7 +16,7 @@ import (
 	"myproxy/pkg/util/net"
 	"myproxy/pkg/util/packet"
 	"reflect"
-	"time"
+	"sync"
 )
 
 type endpointServer struct {
@@ -90,42 +90,41 @@ func handStream(ctx context.Context, stream *quic.Stream) {
 		}
 	}(stream)
 
-	for {
-		payload, err := packet.DePacket(stream)
-		if err != nil {
-			mlog.Error("", zap.Error(err))
-			return
-		}
-
-		message := decodePacket(payload)
-		if message == nil {
-			return
-		}
-
-		endpoint, err := getEndpoint(message)
-		if err != nil {
-			mlog.Error("", zap.Error(err))
-			return
-		}
-
-		m := encodePacket(message, endpoint.LocalAddr().Port())
-		if m == nil {
-			mlog.Error("encode packet failed")
-			return
-		}
-
-		_, err = stream.Write(m)
-		if err != nil {
-			mlog.Error("", zap.Error(err))
-			return
-		}
-		stream.Flush()
-
-		go proxy.ListenQUIC(ctx, endpoint)
-		break
+	payload, err := packet.DePacket(stream)
+	if err != nil {
+		mlog.Error("", zap.Error(err))
+		return
 	}
 
-	time.Sleep(time.Second * 5)
+	message := decodePacket(payload)
+	if message == nil {
+		return
+	}
+
+	endpoint, err := getEndpoint(message)
+	if err != nil {
+		mlog.Error("", zap.Error(err))
+		return
+	}
+
+	m := encodePacket(message, endpoint.LocalAddr().Port())
+	if m == nil {
+		mlog.Error("encode packet failed")
+		return
+	}
+
+	_, err = stream.Write(m)
+	if err != nil {
+		mlog.Error("", zap.Error(err))
+		return
+	}
+	stream.Flush()
+
+	if old, loaded := dataEndpoints.LoadAndDelete(message.Tag); loaded {
+		old.(*quic.Endpoint).Close(ctx)
+	}
+	dataEndpoints.Store(message.Tag, endpoint)
+	go proxy.ListenQUIC(ctx, endpoint)
 }
 
 func decodePacket(payload []byte) *internal.Message {
@@ -187,5 +186,6 @@ func init() {
 }
 
 var (
-	errConnClosed = "connection closed"
+	errConnClosed   = "connection closed"
+	dataEndpoints   sync.Map
 )

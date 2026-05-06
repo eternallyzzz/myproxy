@@ -101,7 +101,11 @@ func listenUDP(ctx context.Context, l *net.UDPConn, inb *models.Inbound) {
 			portBytes := data[portOffset : portOffset+2]
 			port := int(portBytes[0])<<8 + int(portBytes[1])
 
-			dstAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", ip.String(), port))
+			dstAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", ip.String(), port))
+			if err != nil {
+				mlog.Error(err.Error())
+				continue
+			}
 
 			work := &Work{
 				ID:      id.GetSnowflakeID().String(),
