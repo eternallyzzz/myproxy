@@ -220,6 +220,7 @@ func handSocks(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *
 				if err != nil {
 					return
 				}
+				return
 			}
 		}
 
@@ -231,12 +232,8 @@ func handSocks(ctx context.Context, conn net.Conn, localAddr *net.UDPAddr, inb *
 		}
 	} else {
 		if inb.Setting != nil && inb.Setting.User != "" && inb.Setting.Pass != "" {
-			err := socks5.WriteAuthResponse(conn, socks5.AuthResponse{
-				Method: socks5.AuthTypeUsernamePassword,
-			})
-			if err != nil {
-				return
-			}
+			_ = socks5.WriteAuthResponse(conn, socks5.AuthResponse{Method: socks5.AuthTypeNoAcceptedMethods})
+			return
 		}
 		err = socks5.WriteAuthResponse(conn, socks5.AuthResponse{Method: socks5.AuthTypeNotRequired})
 		if err != nil {

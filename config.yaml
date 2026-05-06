@@ -6,6 +6,9 @@ transfer:
   maxBidiRemoteStreams: 100
   maxIdleTimeout: -1
   keepAlivePeriod: 10
+  obfuscation:
+    xorKey: "myproxy"
+    padding: true
 endpoint:
   address: 0.0.0.0
   port: 23456

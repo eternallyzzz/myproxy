@@ -40,8 +40,14 @@ type Log struct {
 }
 
 type Transfer struct {
-	TLS *Tls `json:"tls"`
+	TLS         *Tls         `json:"tls"`
+	Obfuscation *Obfuscation `json:"obfuscation"`
 	*QUICConfig
+}
+
+type Obfuscation struct {
+	XorKey  string `json:"xorKey"`
+	Padding bool   `json:"padding"`
 }
 
 type Endpoint struct {
@@ -62,8 +68,9 @@ type QUICConfig struct {
 }
 
 type Tls struct {
-	Crt string `json:"crt"`
-	Key string `json:"key"`
+	Crt      string `json:"crt"`
+	Key      string `json:"key"`
+	Insecure bool   `json:"insecure"`
 }
 
 type NetAddr struct {

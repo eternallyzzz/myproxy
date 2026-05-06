@@ -6,6 +6,9 @@ transfer:
   maxBidiRemoteStreams: 100
   maxIdleTimeout: -1
   keepAlivePeriod: 10
+  obfuscation:
+    xorKey: "myproxy"
+    padding: true
 inbounds:
   - tag: p1
     address: 127.0.0.1

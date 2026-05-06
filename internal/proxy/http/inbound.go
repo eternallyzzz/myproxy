@@ -66,6 +66,15 @@ func dispatchHttp(ctx context.Context, client net.Conn, inb *models.Inbound) {
 
 	mlog.Debug(fmt.Sprintf("request to Method [%s] Host [%s] with URL [%s]", req.Method, host, req.URL))
 
+	if inb.Setting != nil && inb.Setting.User != "" && inb.Setting.Pass != "" {
+		u, p, ok := req.BasicAuth()
+		if !ok || u != inb.Setting.User || p != inb.Setting.Pass {
+			_, _ = client.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\n\r\n"))
+			_ = client.Close()
+			return
+		}
+	}
+
 	ips, err := net2.LookupIP(host)
 	if err != nil {
 		mlog.Error(err.Error())

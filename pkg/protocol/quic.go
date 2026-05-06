@@ -37,20 +37,24 @@ func GetEndPointDial(ctx context.Context, endpoint *quic.Endpoint, addr *models.
 
 func getSrvCfg() *quic.Config {
 	q := quic.Config{
-		TLSConfig: tls.GetTLSConfig(shared.ServerTLS, ""),
+		TLSConfig: tls.GetTLSConfig(shared.ServerTLS, "", false),
 	}
 	convertToQUIC(&q)
 
 	if Transfer != nil && Transfer.TLS != nil {
-		q.TLSConfig = tls.GetTLSConfigWithCustom(shared.ServerTLS, "", Transfer.TLS.Crt, Transfer.TLS.Key)
+		q.TLSConfig = tls.GetTLSConfigWithCustom(shared.ServerTLS, "", Transfer.TLS.Crt, Transfer.TLS.Key, false)
 	}
 
 	return &q
 }
 
 func getCliCfg(addr string) *quic.Config {
+	insecure := false
+	if Transfer != nil && Transfer.TLS != nil {
+		insecure = Transfer.TLS.Insecure
+	}
 	q := quic.Config{
-		TLSConfig: tls.GetTLSConfig(shared.ClientTLS, addr),
+		TLSConfig: tls.GetTLSConfig(shared.ClientTLS, addr, insecure),
 	}
 	convertToQUIC(&q)
 	return &q

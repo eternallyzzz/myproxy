@@ -10,6 +10,7 @@ import (
 	"myproxy/pkg/models"
 	"myproxy/pkg/protocol"
 	"myproxy/pkg/shared"
+	"myproxy/pkg/util/packet"
 	"os"
 	"time"
 )
@@ -20,6 +21,9 @@ func Init(path string) (*models.Config, error) {
 	} else {
 		if c.Transfer != nil {
 			protocol.Transfer = c.Transfer
+			if c.Transfer.Obfuscation != nil {
+				packet.InitObfuscation(c.Transfer.Obfuscation.XorKey, c.Transfer.Obfuscation.Padding)
+			}
 		}
 
 		readFile, err := content.ReadFile("cn.mmdb")

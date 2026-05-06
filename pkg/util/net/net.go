@@ -6,6 +6,7 @@ import (
 	"myproxy/internal/mlog"
 	"net"
 	"net/http"
+	"strings"
 )
 
 var (
@@ -23,7 +24,7 @@ func GetExternalIP() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		address = string(bytes)
+		address = strings.TrimSpace(string(bytes))
 	}
 	return address, nil
 }
